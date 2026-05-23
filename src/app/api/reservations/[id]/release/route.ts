@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { cleanupExpiredReservations } from "@/lib/cleanupExpiredReservations";
 
 export async function POST(
   req: NextRequest,
@@ -7,6 +8,7 @@ export async function POST(
 ) {
 
   try {
+    await cleanupExpiredReservations();
 
     const { id } = await params;
 
