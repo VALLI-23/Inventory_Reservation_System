@@ -2,7 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { cleanupExpiredReservations } from "@/lib/cleanupExpiredReservations";
+import { z } from "zod";
 
+const reservationSchema = z.object({
+  productId: z.string(),
+  warehouseId: z.string(),
+  quantity: z.number().positive(),
+});
 export async function POST(req: NextRequest) {
 
   try {
@@ -10,22 +16,16 @@ export async function POST(req: NextRequest) {
     await cleanupExpiredReservations();
     const body = await req.json();
 
-    const {
-      productId,
-      warehouseId,
-      quantity,
-    } = body;
+    const parsed =
+      reservationSchema.safeParse(body);
 
-    // Validation
-    if (
-      !productId ||
-      !warehouseId ||
-      !quantity ||
-      quantity <= 0
-    ) {
+    if (!parsed.success) {
+
       return NextResponse.json(
         {
           error: "Invalid request data",
+          details:
+            parsed.error.flatten(),
         },
         {
           status: 400,
@@ -33,9 +33,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const {
+      productId,
+      warehouseId,
+      quantity,
+    } = parsed.data;
+
+
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-
+        // Lock inventory row to prevent
+        // concurrent reservation race conditions
         // Row lock
         await tx.$queryRaw`
           SELECT * FROM "Inventory"
@@ -75,6 +83,15 @@ export async function POST(req: NextRequest) {
           };
         }
 
+        if (
+          inventory.reservedStock + quantity >
+          inventory.totalStock
+        ) {
+          return {
+            error: "Not enough stock available",
+            status: 409,
+          };
+        } 
         // Increase reserved stock
         await tx.inventory.update({
           where: {
@@ -108,6 +125,10 @@ export async function POST(req: NextRequest) {
           reservation,
           status: 201,
         };
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
       }
     );
 
@@ -143,7 +164,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        error: "Reservation failed",
+        error: "Failed to create reservation",
       },
       {
         status: 500,
