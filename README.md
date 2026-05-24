@@ -1,36 +1,253 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Inventory Reservation System
 
-## Getting Started
+A concurrency-safe inventory reservation platform built with Next.js, Prisma, PostgreSQL, and Tailwind CSS.
 
-First, run the development server:
+---
+
+# Overview
+
+This project prevents overselling inventory during checkout by implementing temporary stock reservations.
+
+When a customer proceeds to checkout:
+
+- stock is temporarily reserved
+- reservation expires automatically after 10 minutes
+- successful payment confirms reservation
+- cancelled/expired reservations release stock back to inventory
+
+The system safely handles concurrent reservation requests using PostgreSQL transactions and row-level locking.
+
+---
+
+# Tech Stack
+
+- Next.js App Router
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- Tailwind CSS
+- shadcn/ui
+- Zod validation
+
+---
+
+# Features
+
+## Backend
+
+- Products API
+- Warehouses API
+- Inventory API
+- Reservation API
+- Reservation confirmation
+- Reservation release
+- Expired reservation cleanup
+- Zod request validation
+- Serializable database transactions
+- PostgreSQL row locking (`FOR UPDATE`)
+- Concurrency-safe reservation handling
+
+## Frontend
+
+- Product listing page
+- Warehouse inventory display
+- Reservation checkout page
+- Live countdown timer
+- Real-time polling updates
+- Optimistic UI updates
+- Reservation status badges
+- 409 conflict handling
+- 410 expiry handling
+
+---
+
+# Concurrency Protection
+
+To prevent race conditions during simultaneous reservations:
+
+- inventory updates run inside Prisma transactions
+- PostgreSQL `FOR UPDATE` row locks are used
+- Serializable isolation level is enabled
+
+This guarantees:
+
+- only one user can reserve the final unit
+- competing requests receive `409 Conflict`
+
+Reservation flow:
+
+1. Begin transaction
+2. Lock inventory row
+3. Validate stock availability
+4. Increment reserved stock
+5. Create reservation
+6. Commit transaction
+
+---
+
+# Reservation Expiry Handling
+
+Reservations automatically expire after 10 minutes.
+
+Expired reservations are released using a lazy cleanup strategy:
+
+- cleanup runs before inventory/reservation reads
+- reserved stock is returned automatically
+
+This avoids requiring a separate worker or cron job.
+
+---
+
+# API Endpoints
+
+## Products
+
+```http
+GET /api/products
+```
+
+Returns products with warehouse stock availability.
+
+---
+
+## Warehouses
+
+```http
+GET /api/warehouses
+```
+
+Returns all warehouses.
+
+---
+
+## Inventory
+
+```http
+GET /api/inventory
+```
+
+Returns inventory information.
+
+---
+
+## Create Reservation
+
+```http
+POST /api/reservations
+```
+
+Creates temporary reservation.
+
+Possible responses:
+
+- `201 Created`
+- `409 Conflict`
+
+---
+
+## Confirm Reservation
+
+```http
+POST /api/reservations/:id/confirm
+```
+
+Confirms reservation after payment success.
+
+Possible responses:
+
+- `200 OK`
+- `410 Gone`
+
+---
+
+## Release Reservation
+
+```http
+POST /api/reservations/:id/release
+```
+
+Releases reservation early.
+
+---
+
+# Frontend Features
+
+## Product Page
+
+- Reserve inventory
+- Real-time inventory polling
+- Availability indicators
+- Optimistic updates
+
+## Reservation Page
+
+- Live countdown timer
+- Confirm purchase
+- Cancel reservation
+- Automatic refresh
+- Expiry handling
+
+---
+
+# Setup Instructions
+
+## Install dependencies
+
+```bash
+npm install
+```
+
+---
+
+## Configure environment variables
+
+Create `.env`:
+
+```env
+DATABASE_URL=
+DIRECT_URL=
+```
+
+---
+
+## Run Prisma migrations
+
+```bash
+npx prisma migrate dev
+```
+
+---
+
+## Start development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Frontend:
+- Vercel
 
-## Learn More
+Database:
+- PostgreSQL
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Tradeoffs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Lazy cleanup was chosen instead of cron jobs to reduce infrastructure complexity.
+- Serializable transactions prioritize correctness over throughput.
+- Polling was used instead of WebSockets for simplicity.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Future Improvements
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Redis-based idempotency keys
+- WebSocket inventory updates
+- Admin dashboard
+- Reservation analytics
+- Background cleanup workers
